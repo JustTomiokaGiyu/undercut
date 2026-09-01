@@ -185,8 +185,32 @@ function renderMap() {
   matrix.setAttribute("in", "blur");
   matrix.setAttribute("mode", "matrix");
   matrix.setAttribute("values", "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9");
+  matrix.setAttribute("result", "matrix");
   filter.appendChild(blur);
   filter.appendChild(matrix);
+  const turb = document.createElementNS(ns, "feTurbulence");
+  turb.setAttribute("type", "fractalNoise");
+  turb.setAttribute("baseFrequency", "0.85");
+  turb.setAttribute("numOctaves", "2");
+  turb.setAttribute("result", "noise");
+  const noiseAdjust = document.createElementNS(ns, "feColorMatrix");
+  noiseAdjust.setAttribute("in", "noise");
+  noiseAdjust.setAttribute("type", "matrix");
+  noiseAdjust.setAttribute("values", "0.3 0.3 0.3 0 0.55  0.3 0.3 0.3 0 0.55  0.3 0.3 0.3 0 0.55  0 0 0 0 1");
+  noiseAdjust.setAttribute("result", "shading");
+  const clipToBlob = document.createElementNS(ns, "feComposite");
+  clipToBlob.setAttribute("in", "shading");
+  clipToBlob.setAttribute("in2", "matrix");
+  clipToBlob.setAttribute("operator", "in");
+  clipToBlob.setAttribute("result", "clippedShading");
+  const blend = document.createElementNS(ns, "feBlend");
+  blend.setAttribute("in", "matrix");
+  blend.setAttribute("in2", "clippedShading");
+  blend.setAttribute("mode", "multiply");
+  filter.appendChild(turb);
+  filter.appendChild(noiseAdjust);
+  filter.appendChild(clipToBlob);
+  filter.appendChild(blend);
   defs.appendChild(filter);
   svg.appendChild(defs);
 
@@ -258,13 +282,23 @@ function renderMap() {
     const g = document.createElementNS(ns, "g");
 
     if (owner) {
-      const ring = document.createElementNS(ns, "circle");
-      ring.setAttribute("cx", z.x); ring.setAttribute("cy", z.y);
-      ring.setAttribute("r", z.hideout ? "13" : "10");
-      ring.setAttribute("fill", "none");
-      ring.setAttribute("stroke", colorForPlayer(owner));
-      ring.setAttribute("stroke-width", "2.5");
-      g.appendChild(ring);
+      const col = colorForPlayer(owner);
+      const figure = document.createElementNS(ns, "g");
+      const ox = z.x, oy = z.y - (z.hideout ? 15 : 12);
+      const head = document.createElementNS(ns, "circle");
+      head.setAttribute("cx", ox); head.setAttribute("cy", oy - 5);
+      head.setAttribute("r", "2.6");
+      head.setAttribute("fill", col);
+      head.setAttribute("stroke", "#14110a");
+      head.setAttribute("stroke-width", "0.6");
+      figure.appendChild(head);
+      const body = document.createElementNS(ns, "path");
+      body.setAttribute("d", `M ${ox - 4} ${oy + 6} Q ${ox} ${oy - 4} ${ox + 4} ${oy + 6} Z`);
+      body.setAttribute("fill", col);
+      body.setAttribute("stroke", "#14110a");
+      body.setAttribute("stroke-width", "0.6");
+      figure.appendChild(body);
+      g.appendChild(figure);
     }
 
     if (z.hideout) {
