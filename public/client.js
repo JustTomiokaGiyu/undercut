@@ -196,7 +196,7 @@ function renderMap() {
   const noiseAdjust = document.createElementNS(ns, "feColorMatrix");
   noiseAdjust.setAttribute("in", "noise");
   noiseAdjust.setAttribute("type", "matrix");
-  noiseAdjust.setAttribute("values", "0.3 0.3 0.3 0 0.55  0.3 0.3 0.3 0 0.55  0.3 0.3 0.3 0 0.55  0 0 0 0 1");
+  noiseAdjust.setAttribute("values", "0.35 0.25 0.15 0 0.45  0.30 0.22 0.12 0 0.40  0.20 0.15 0.08 0 0.30  0 0 0 0 1");
   noiseAdjust.setAttribute("result", "shading");
   const clipToBlob = document.createElementNS(ns, "feComposite");
   clipToBlob.setAttribute("in", "shading");
@@ -212,14 +212,36 @@ function renderMap() {
   filter.appendChild(clipToBlob);
   filter.appendChild(blend);
   defs.appendChild(filter);
+  const waterGrad = document.createElementNS(ns, "radialGradient");
+  waterGrad.setAttribute("id", "water-grad");
+  waterGrad.setAttribute("cx", "50%"); waterGrad.setAttribute("cy", "45%"); waterGrad.setAttribute("r", "75%");
+  const wStop1 = document.createElementNS(ns, "stop");
+  wStop1.setAttribute("offset", "0%"); wStop1.setAttribute("stop-color", "#121A26");
+  const wStop2 = document.createElementNS(ns, "stop");
+  wStop2.setAttribute("offset", "100%"); wStop2.setAttribute("stop-color", "#070A10");
+  waterGrad.appendChild(wStop1); waterGrad.appendChild(wStop2);
+  defs.appendChild(waterGrad);
   svg.appendChild(defs);
 
   // water
   const water = document.createElementNS(ns, "rect");
   water.setAttribute("x", "0"); water.setAttribute("y", "0");
   water.setAttribute("width", "620"); water.setAttribute("height", "460");
-  water.setAttribute("fill", "#0A0E15");
+  water.setAttribute("fill", "url(#water-grad)");
   svg.appendChild(water);
+
+  // sandy coastline rim, glowing softly where land meets water
+  const rim = document.createElementNS(ns, "g");
+  rim.setAttribute("filter", "url(#terrain-blob)");
+  rim.setAttribute("opacity", "0.55");
+  state.map.zones.forEach((z) => {
+    const c = document.createElementNS(ns, "circle");
+    c.setAttribute("cx", z.x); c.setAttribute("cy", z.y);
+    c.setAttribute("r", "44");
+    c.setAttribute("fill", "#9C8452");
+    rim.appendChild(c);
+  });
+  svg.appendChild(rim);
 
   // terrain island(s), fused from a blob per zone via the gooey filter
   const blobGroup = document.createElementNS(ns, "g");
@@ -227,19 +249,19 @@ function renderMap() {
   state.map.zones.forEach((z) => {
     const c = document.createElementNS(ns, "circle");
     c.setAttribute("cx", z.x); c.setAttribute("cy", z.y);
-    c.setAttribute("r", "40");
-    c.setAttribute("fill", "#4A4530");
+    c.setAttribute("r", "39");
+    c.setAttribute("fill", "#4E4025");
     blobGroup.appendChild(c);
   });
   svg.appendChild(blobGroup);
   const shade = document.createElementNS(ns, "g");
   shade.setAttribute("filter", "url(#terrain-blob)");
-  shade.setAttribute("opacity", "0.5");
+  shade.setAttribute("opacity", "0.55");
   state.map.zones.forEach((z) => {
     const c = document.createElementNS(ns, "circle");
     c.setAttribute("cx", z.x); c.setAttribute("cy", z.y - 3);
-    c.setAttribute("r", "32");
-    c.setAttribute("fill", "#615a3d");
+    c.setAttribute("r", "31");
+    c.setAttribute("fill", "#77673F");
     shade.appendChild(c);
   });
   svg.appendChild(shade);
