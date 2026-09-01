@@ -159,34 +159,68 @@ function seededRand(seed) {
   const x = Math.sin(seed) * 10000;
   return x - Math.floor(x);
 }
+function quadPoint(p0, c, p1, t) {
+  const mt = 1 - t;
+  return {
+    x: mt * mt * p0.x + 2 * mt * t * c.x + t * t * p1.x,
+    y: mt * mt * p0.y + 2 * mt * t * c.y + t * t * p1.y,
+  };
+}
 
 function renderMap() {
   const svg = el("map-svg");
   svg.innerHTML = "";
   const ns = "http://www.w3.org/2000/svg";
 
-  // cork board texture
   const defs = document.createElementNS(ns, "defs");
-  const pattern = document.createElementNS(ns, "pattern");
-  pattern.setAttribute("id", "cork");
-  pattern.setAttribute("width", "22");
-  pattern.setAttribute("height", "22");
-  pattern.setAttribute("patternUnits", "userSpaceOnUse");
-  const dot = document.createElementNS(ns, "circle");
-  dot.setAttribute("cx", "11");
-  dot.setAttribute("cy", "11");
-  dot.setAttribute("r", "1");
-  dot.setAttribute("fill", "rgba(255,255,255,0.035)");
-  pattern.appendChild(dot);
-  defs.appendChild(pattern);
+  const filter = document.createElementNS(ns, "filter");
+  filter.setAttribute("id", "terrain-blob");
+  filter.setAttribute("x", "-20%"); filter.setAttribute("y", "-20%");
+  filter.setAttribute("width", "140%"); filter.setAttribute("height", "140%");
+  const blur = document.createElementNS(ns, "feGaussianBlur");
+  blur.setAttribute("in", "SourceGraphic");
+  blur.setAttribute("stdDeviation", "16");
+  blur.setAttribute("result", "blur");
+  const matrix = document.createElementNS(ns, "feColorMatrix");
+  matrix.setAttribute("in", "blur");
+  matrix.setAttribute("mode", "matrix");
+  matrix.setAttribute("values", "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -9");
+  filter.appendChild(blur);
+  filter.appendChild(matrix);
+  defs.appendChild(filter);
   svg.appendChild(defs);
-  const bg = document.createElementNS(ns, "rect");
-  bg.setAttribute("x", "0"); bg.setAttribute("y", "0");
-  bg.setAttribute("width", "620"); bg.setAttribute("height", "460");
-  bg.setAttribute("fill", "url(#cork)");
-  svg.appendChild(bg);
 
-  // red string connections, curved with a stable jitter + pinned "tack" ends
+  // water
+  const water = document.createElementNS(ns, "rect");
+  water.setAttribute("x", "0"); water.setAttribute("y", "0");
+  water.setAttribute("width", "620"); water.setAttribute("height", "460");
+  water.setAttribute("fill", "#0A0E15");
+  svg.appendChild(water);
+
+  // terrain island(s), fused from a blob per zone via the gooey filter
+  const blobGroup = document.createElementNS(ns, "g");
+  blobGroup.setAttribute("filter", "url(#terrain-blob)");
+  state.map.zones.forEach((z) => {
+    const c = document.createElementNS(ns, "circle");
+    c.setAttribute("cx", z.x); c.setAttribute("cy", z.y);
+    c.setAttribute("r", "40");
+    c.setAttribute("fill", "#4A4530");
+    blobGroup.appendChild(c);
+  });
+  svg.appendChild(blobGroup);
+  const shade = document.createElementNS(ns, "g");
+  shade.setAttribute("filter", "url(#terrain-blob)");
+  shade.setAttribute("opacity", "0.5");
+  state.map.zones.forEach((z) => {
+    const c = document.createElementNS(ns, "circle");
+    c.setAttribute("cx", z.x); c.setAttribute("cy", z.y - 3);
+    c.setAttribute("r", "32");
+    c.setAttribute("fill", "#615a3d");
+    shade.appendChild(c);
+  });
+  svg.appendChild(shade);
+
+  // roads: gently curved, with small neutral waypoint dots for a woven, dense look
   state.map.connections.forEach(([a, b]) => {
     const za = state.map.zones.find((z) => z.id === a);
     const zb = state.map.zones.find((z) => z.id === b);
@@ -194,84 +228,73 @@ function renderMap() {
     const dx = zb.x - za.x, dy = zb.y - za.y;
     const len = Math.hypot(dx, dy) || 1;
     const nx = -dy / len, ny = dx / len;
-    const jitter = (seededRand(hashStr(a + "|" + b)) - 0.5) * 22;
-    const cx = mx + nx * jitter, cy = my + ny * jitter;
+    const jitter = (seededRand(hashStr(a + "|" + b)) - 0.5) * Math.min(14, len * 0.18);
+    const c = { x: mx + nx * jitter, y: my + ny * jitter };
 
     const path = document.createElementNS(ns, "path");
-    path.setAttribute("d", `M ${za.x} ${za.y} Q ${cx} ${cy} ${zb.x} ${zb.y}`);
+    path.setAttribute("d", `M ${za.x} ${za.y} Q ${c.x} ${c.y} ${zb.x} ${zb.y}`);
     path.setAttribute("fill", "none");
-    path.setAttribute("stroke", "#A33B2E");
-    path.setAttribute("stroke-opacity", "0.6");
-    path.setAttribute("stroke-width", "1.5");
+    path.setAttribute("stroke", "#C7BC9A");
+    path.setAttribute("stroke-opacity", "0.55");
+    path.setAttribute("stroke-width", "1.4");
     svg.appendChild(path);
 
-    [[za.x, za.y], [zb.x, zb.y]].forEach(([tx, ty]) => {
-      const tack = document.createElementNS(ns, "circle");
-      tack.setAttribute("cx", tx); tack.setAttribute("cy", ty);
-      tack.setAttribute("r", "2.2");
-      tack.setAttribute("fill", "#7A2A20");
-      svg.appendChild(tack);
-    });
+    const waypointCount = len > 90 ? 2 : len > 50 ? 1 : 0;
+    for (let i = 1; i <= waypointCount; i++) {
+      const t = i / (waypointCount + 1);
+      const pt = quadPoint({ x: za.x, y: za.y }, c, { x: zb.x, y: zb.y }, t);
+      const dot = document.createElementNS(ns, "circle");
+      dot.setAttribute("cx", pt.x.toFixed(1)); dot.setAttribute("cy", pt.y.toFixed(1));
+      dot.setAttribute("r", "2.4");
+      dot.setAttribute("fill", "#B9AE8C");
+      dot.setAttribute("fill-opacity", "0.85");
+      svg.appendChild(dot);
+    }
   });
 
-  // zones as small pinned index cards
+  // zones: district dots or hideout house-icons, with a colored ring if owned
   state.map.zones.forEach((z) => {
     const owner = state.zoneOwners[z.id];
-    const ownerColor = owner ? colorForPlayer(owner) : "#8a7f66";
-    const rotation = (seededRand(hashStr(z.id)) - 0.5) * 9;
-    const cardW = z.hideout ? 70 : 60, cardH = z.hideout ? 42 : 36;
-
     const g = document.createElementNS(ns, "g");
-    g.setAttribute("transform", `rotate(${rotation.toFixed(1)} ${z.x} ${z.y})`);
 
-    const card = document.createElementNS(ns, "rect");
-    card.setAttribute("x", z.x - cardW / 2);
-    card.setAttribute("y", z.y - cardH / 2);
-    card.setAttribute("width", cardW);
-    card.setAttribute("height", cardH);
-    card.setAttribute("rx", "1.5");
-    card.setAttribute("fill", "#F4ECD8");
-    card.setAttribute("stroke", ownerColor);
-    card.setAttribute("stroke-width", owner ? "3" : "1.3");
-    g.appendChild(card);
-
-    const pin = document.createElementNS(ns, "circle");
-    pin.setAttribute("cx", z.x); pin.setAttribute("cy", z.y - cardH / 2);
-    pin.setAttribute("r", "3.6");
-    pin.setAttribute("fill", "#C9A227");
-    pin.setAttribute("stroke", "#7a5f14");
-    pin.setAttribute("stroke-width", "0.6");
-    g.appendChild(pin);
+    if (owner) {
+      const ring = document.createElementNS(ns, "circle");
+      ring.setAttribute("cx", z.x); ring.setAttribute("cy", z.y);
+      ring.setAttribute("r", z.hideout ? "13" : "10");
+      ring.setAttribute("fill", "none");
+      ring.setAttribute("stroke", colorForPlayer(owner));
+      ring.setAttribute("stroke-width", "2.5");
+      g.appendChild(ring);
+    }
 
     if (z.hideout) {
-      const seal = document.createElementNS(ns, "circle");
-      seal.setAttribute("cx", z.x + cardW / 2 - 8);
-      seal.setAttribute("cy", z.y + cardH / 2 - 8);
-      seal.setAttribute("r", "6.5");
-      seal.setAttribute("fill", "#A33B2E");
-      seal.setAttribute("stroke", "#7A2A20");
-      seal.setAttribute("stroke-width", "1");
-      g.appendChild(seal);
-      const sealRing = document.createElementNS(ns, "circle");
-      sealRing.setAttribute("cx", z.x + cardW / 2 - 8);
-      sealRing.setAttribute("cy", z.y + cardH / 2 - 8);
-      sealRing.setAttribute("r", "3.2");
-      sealRing.setAttribute("fill", "none");
-      sealRing.setAttribute("stroke", "#F2D77A");
-      sealRing.setAttribute("stroke-width", "1");
-      g.appendChild(sealRing);
+      const house = document.createElementNS(ns, "path");
+      house.setAttribute("d", `M ${z.x - 6} ${z.y + 5} L ${z.x - 6} ${z.y - 1} L ${z.x} ${z.y - 7} L ${z.x + 6} ${z.y - 1} L ${z.x + 6} ${z.y + 5} Z`);
+      house.setAttribute("fill", "#EFE9D6");
+      house.setAttribute("stroke", "#2B2A22");
+      house.setAttribute("stroke-width", "1");
+      g.appendChild(house);
+    } else {
+      const dot = document.createElementNS(ns, "circle");
+      dot.setAttribute("cx", z.x); dot.setAttribute("cy", z.y);
+      dot.setAttribute("r", "5");
+      dot.setAttribute("fill", "#CFC6A8");
+      dot.setAttribute("stroke", "#2B2A22");
+      dot.setAttribute("stroke-width", "1");
+      g.appendChild(dot);
     }
 
     svg.appendChild(g);
 
     const label = document.createElementNS(ns, "text");
     label.setAttribute("x", z.x);
-    label.setAttribute("y", z.y + cardH / 2 + 15);
+    label.setAttribute("y", z.y + (z.hideout ? 20 : 18));
     label.setAttribute("text-anchor", "middle");
-    label.setAttribute("fill", "#C9BCA0");
-    label.setAttribute("font-size", "10px");
-    label.setAttribute("font-family", "'Courier Prime', monospace");
-    label.textContent = z.name;
+    label.setAttribute("fill", "#9A9584");
+    label.setAttribute("font-size", "9px");
+    label.setAttribute("font-family", "'Inter', sans-serif");
+    label.setAttribute("letter-spacing", "0.02em");
+    label.textContent = z.name.toUpperCase();
     svg.appendChild(label);
   });
 }
